@@ -1,4 +1,4 @@
-addSbtPlugin("org.flywaydb" % "flyway-sbt" % "0-SNAPSHOT")
+addSbtPlugin("org.flywaydb" % "flyway-sbt" % "4.0.3.ingres")
 
 libraryDependencies ++= Seq(
   "org.springframework" % "spring-jdbc" % "3.0.5.RELEASE"
