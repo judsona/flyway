@@ -23,8 +23,8 @@ case "`uname`" in
   Linux*) linux=true;;
 esac
 
-# resolve links - $0 may be a softlink
-PRG="$0"
+# This causes a bug when called from another script.. $0 that is.
+PRG=$(dirname "$SCRIPT")
 
 while [ -h "$PRG" ] ; do
   ls=`ls -ld "$PRG"`
