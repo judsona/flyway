@@ -40,6 +40,8 @@ public class DriverDataSource implements DataSource {
     private static final String MYSQL_JDBC_URL_PREFIX = "jdbc:mysql:";
     private static final String ORACLE_JDBC_URL_PREFIX = "jdbc:oracle:";
     private static final String MYSQL_5_JDBC_DRIVER = "com.mysql.jdbc.Driver";
+    private static final String INGRES_JDBC_URL_PREFIX = "jdbc:ingres:";
+    private static final String INGRES_JDBC_DRIVER = "com.ingres.jdbc.IngresDriver";
 
     /**
      * The JDBC Driver instance to use.
@@ -320,6 +322,10 @@ public class DriverDataSource implements DataSource {
         if (url.startsWith("jdbc:sap:")) {
             return "com.sap.db.jdbc.Driver";
         }
+        
+        if (url.startsWith(INGRES_JDBC_URL_PREFIX)) {
+        	return INGRES_JDBC_DRIVER;
+        }
 
         return null;
     }
@@ -404,6 +410,15 @@ public class DriverDataSource implements DataSource {
         if (password != null) {
             props.setProperty("password", password);
         }
+        if(url.startsWith(INGRES_JDBC_URL_PREFIX)) {
+        	 if (username != null) {
+                 props.setProperty("dbms_user", username);
+             }
+             if (password != null) {
+                 props.setProperty("dbms_password", password);
+             }
+        }
+        
         Connection connection;
         try {
             connection = driver.connect(url, props);

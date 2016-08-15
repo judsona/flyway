@@ -1,0 +1,140 @@
+/**
+ * Copyright 2010-2016 Boxfuse GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.flywaydb.core.internal.dbsupport.ingres;
+
+import org.flywaydb.core.internal.dbsupport.JdbcTemplate;
+import org.flywaydb.core.internal.dbsupport.Schema;
+import org.flywaydb.core.internal.dbsupport.Table;
+import org.flywaydb.core.internal.util.logging.Log;
+import org.flywaydb.core.internal.util.logging.LogFactory;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Ingres implementation of Schema.
+ * 
+ * Ingress only partially supports Schemas. Each user gets a schema named as the username.
+ * 
+ */
+public class IngresSchema extends Schema<Ingres10DbSupport> {
+	
+    /**
+     * Logger.
+     */
+    private static final Log LOG = LogFactory.getLog(IngresSchema.class);
+    
+    /**
+     * Creates a new Ingres schema.
+     *
+     * @param jdbcTemplate The Jdbc Template for communicating with the DB.
+     * @param dbSupport    The database-specific support.
+     * @param name         The name of the schema.
+     */
+    public IngresSchema(JdbcTemplate jdbcTemplate, Ingres10DbSupport dbSupport, String name) {
+        super(jdbcTemplate, dbSupport, name);
+    }
+
+    @Override
+    protected boolean doExists() throws SQLException {
+        return jdbcTemplate.queryForInt("SELECT COUNT(*) FROM iischema WHERE schema_name = ?", name) > 0;
+    }
+
+    @Override
+    protected boolean doEmpty() throws SQLException {
+        int objectCount = jdbcTemplate.queryForInt(
+                "SELECT count(*) FROM iitables WHERE user = ? AND system_use = 'U'",
+                name);
+        return objectCount == 0;
+    }
+
+    @Override
+    protected void doCreate() throws SQLException {
+        // Schemas not supported by Ingres
+    }
+
+    @Override
+    protected void doDrop() throws SQLException {
+        // Schemas not supported by Ingres
+        doClean();
+    }
+
+    @Override
+    protected void doClean() throws SQLException {
+        for (Table table : allTables()) {
+        	// It would be better to test whether the table is a "system table" here, but Table-class does not contain that information.
+            if (table.getName().startsWith("iietab_")) {
+                /*
+                 * This is for skipping extended, Ingres-managed tables. Trying to drop them would lead to:
+                 * Flyway Error: com.googlecode.flyway.core.api.FlywayException: Unable to drop table "schema "."iietab_16d_16e ": DROP: 'iietab_16d_16e' is a system table.
+                 */
+                LOG.info("Skipped dropping table: " + table.getName() + ", because it is an Ingres-managed extension table for glob-types. It is dropped automatically when the parent table is dropped.");
+            } else {
+            	table.drop();
+            }
+        }
+
+        for (String statement : generateDropStatementsForSequences()) {
+            jdbcTemplate.execute(statement);
+        }
+    }
+
+    /**
+     * Generates the statements for dropping the sequences in this schema.
+     *
+     * @return The drop statements.
+     * @throws java.sql.SQLException when the clean statements could not be generated.
+     */
+    private List<String> generateDropStatementsForSequences() throws SQLException {
+        List<String> sequenceNames =
+                jdbcTemplate.queryForStringList(
+                        "SELECT seq_name FROM iisequences WHERE seq_owner=?", name);
+
+        List<String> statements = new ArrayList<String>();
+        for (String sequenceName : sequenceNames) {
+            statements.add("DROP SEQUENCE " + dbSupport.quote(name, sequenceName));
+        }
+
+        return statements;
+    }
+
+    @Override
+    protected Table[] doAllTables() throws SQLException {
+        List<String> tableNames =
+                jdbcTemplate.queryForStringList(
+                        //Search for all the table names
+                        "SELECT t.table_name FROM iitables t" +
+                                //in this schema
+                                " WHERE user=? AND system_use='U'" +
+                                //that are real tables (as opposed to views)
+                                " AND table_type='T'",
+                        name);
+        //Views are excluded as they are dropped with the parent table when using cascade.
+
+        Table[] tables = new Table[tableNames.size()];
+        for (int i = 0; i < tableNames.size(); i++) {
+            tables[i] = new IngresTable(jdbcTemplate, dbSupport, this, tableNames.get(i));
+        }
+        return tables;
+    }
+
+    @Override
+    public Table getTable(String tableName) {
+        return new IngresTable(jdbcTemplate, dbSupport, this, tableName);
+    }
+}
